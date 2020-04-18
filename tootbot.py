@@ -1,134 +1,217 @@
-import os.path
-import sys
+import argparse
 import re
 import sqlite3
+import requests
+import feedparser
+
+from getpass import getpass
+from mastodon import Mastodon
 from datetime import datetime, timedelta
 
-import feedparser
-from mastodon import Mastodon
-import requests
 
-if len(sys.argv) < 4:
-    print("Usage: python3 tootbot.py twitter_account mastodon_login mastodon_passwd mastodon_instance [max_days [footer_tags [delay]]]")  # noqa
-    sys.exit(1)
+def _parseargs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--operation',
+                        help='specify operation to do.',
+                        type=str,
+                        choices=['init', 'toot'],
+                        required=True)
+    parser.add_argument('--username',
+                        help='username to login to mastodon.',
+                        type=str,
+                        required=True)
+    parser.add_argument('--instance',
+                        help='a mastodon instance where the username is '
+                        'hosted.',
+                        type=str,
+                        required=True)
+    parser.add_argument('--source',
+                        help='twitter username to toot to mastodon.',
+                        type=str)
+    parser.add_argument('--days',
+                        help='process only unprocessed tweets less than days '
+                        'old.',
+                        type=int,
+                        default=1)
+    parser.add_argument('--tags',
+                        help='list of tags to append to toot.',
+                        nargs='+',
+                        default=[])
+    parser.add_argument('--delay',
+                        help='process only unprocessed tweets less than days '
+                        'old and after a delay.',
+                        type=int,
+                        default=0)
+    args = parser.parse_args()
+    return args
 
-# sqlite db to store processed tweets (and corresponding toots ids)
-sql = sqlite3.connect('tootbot.db')
-db = sql.cursor()
-db.execute('''CREATE TABLE IF NOT EXISTS tweets (tweet text, toot text,
-           twitter text, mastodon text, instance text)''')
 
-if len(sys.argv) > 4:
-    instance = sys.argv[4]
-else:
-    instance = 'amicale.net'
+def _create_credentials(
+        api_base_url: str, app_cred_file: str, username: str,
+        login_cred_file: str) -> None:
+    try:
+        password = getpass(prompt='Mastodon password: ')
+        Mastodon.create_app(
+            'tootbot',
+            api_base_url=api_base_url,
+            to_file=app_cred_file)
 
-if len(sys.argv) > 5:
-    days = int(sys.argv[5])
-else:
-    days = 1
+        mastodon = Mastodon(
+            client_id=app_cred_file,
+            api_base_url=api_base_url)
 
-if len(sys.argv) > 6:
-    tags = sys.argv[6]
-else:
-    tags = None
-
-if len(sys.argv) > 7:
-    delay = int(sys.argv[7])
-else:
-    delay = 0
+        mastodon.log_in(
+            username=username,
+            password=password,
+            to_file=login_cred_file,
+            scopes=['read', 'write'])
+    except Exception as e:
+        print('could not create credentials: {}'.format(e))
 
 
-source = sys.argv[1]
-mastodon = sys.argv[2]
-passwd = sys.argv[3]
+def _init_db(name: str) -> tuple:
+    # sqlite db to store processed tweets (and corresponding toots ids)
+    sql = sqlite3.connect(name)
+    db = sql.cursor()
+    return sql, db
 
-mastodon_api = None
 
-if source[:4] == 'http':
-    d = feedparser.parse(source)
-    twitter = None
-else:
-    d = feedparser.parse('http://twitrss.me/twitter_user_to_rss/?user='+source)
-    twitter = source
+def _close_db(sql: sqlite3.Connection, db: sqlite3.Cursor) -> None:
+    db.close()
+    sql.close()
 
-for t in reversed(d.entries):
-    # check if this tweet has been processed
-    db.execute('SELECT * FROM tweets WHERE tweet = ? AND twitter = ?  and mastodon = ? and instance = ?', (t.id, source, mastodon, instance))  # noqa
-    last = db.fetchone()
-    dt = t.published_parsed
-    age = datetime.now()-datetime(dt.tm_year, dt.tm_mon, dt.tm_mday,
-                                  dt.tm_hour, dt.tm_min, dt.tm_sec)
-    # process only unprocessed tweets less than 1 day old, after delay
-    if last is None and age < timedelta(days=days) and age > timedelta(days=delay):
-        if mastodon_api is None:
-            # Create application if it does not exist
-            if not os.path.isfile(instance+'.secret'):
-                if Mastodon.create_app(
-                    'tootbot',
-                    api_base_url='https://'+instance,
-                    to_file=instance+'.secret'
-                ):
-                    print('tootbot app created on instance '+instance)
-                else:
-                    print('failed to create app on instance '+instance)
-                    sys.exit(1)
 
-            try:
-                mastodon_api = Mastodon(
-                  client_id=instance+'.secret',
-                  api_base_url='https://'+instance
-                )
-                mastodon_api.log_in(
-                    username=mastodon,
-                    password=passwd,
-                    scopes=['read', 'write'],
-                    to_file=mastodon+".secret"
-                )
-            except:
-                print("ERROR: First Login Failed!")
-                sys.exit(1)
+def _get_pictures(
+        feed: feedparser.FeedParserDict,
+        mastodon_api: Mastodon) -> list:
+    toot_media = []
+    for p in re.finditer(
+            r"https://pbs.twimg.com/[^ \xa0\"]*", feed.summary):
+        media = requests.get(p.group(0))
+        media_posted = mastodon_api.media_post(
+            media.content,
+            mime_type=media.headers.get('content-type'))
+        toot_media.append(media_posted['id'])
+    return toot_media
 
-        c = t.title
-        if twitter and t.author.lower() != ('(@%s)' % twitter).lower():
-            c = ("RT https://twitter.com/%s\n" % t.author[2:-1]) + c
-        toot_media = []
-        # get the pictures...
-        for p in re.finditer(r"https://pbs.twimg.com/[^ \xa0\"]*", t.summary):
-            media = requests.get(p.group(0))
-            media_posted = mastodon_api.media_post(media.content, mime_type=media.headers.get('content-type'))
-            toot_media.append(media_posted['id'])
 
-        # replace short links by original URL
-        m = re.search(r"http[^ \xa0]*", c)
-        if m is not None:
-            l = m.group(0)
-            r = requests.get(l, allow_redirects=False)
-            if r.status_code in {301, 302}:
-                c = c.replace(l, r.headers.get('Location'))
+def _replace_short_links(title: str) -> str:
+    # replace short links by original URL
+    m = re.search(r"http[^ \xa0]*", title)
+    if m is not None:
+        result = m.group(0)
+        r = requests.get(result, allow_redirects=False)
+        if r.status_code in [301, 302]:
+            title = title.replace(result, r.headers.get('Location'))
+    return title
 
-        # remove pic.twitter.com links
-        m = re.search(r"pic.twitter.com[^ \xa0]*", c)
-        if m is not None:
-            l = m.group(0)
-            c = c.replace(l, ' ')
 
-        # remove ellipsis
-        c = c.replace('\xa0…', ' ')
+def _remove_title_trash(title: str) -> str:
+    # remove pic.twitter.com links
+    m = re.search(r"pic.twitter.com[^ \xa0]*", title)
+    if m is not None:
+        result = m.group(0)
+        title = title.replace(result, ' ')
 
-        if twitter is None:
-            c = c + '\nSource: '+ t.authors[0].name +'\n\n' + t.link
+    # remove ellipsis
+    return title.replace('\xa0…', ' ')
 
-        if tags:
-            c = c + '\n' + tags
 
-        if toot_media is not None:
-            toot = mastodon_api.status_post(c, in_reply_to_id=None,
+def main(
+        app_cred_file: str, login_cred_file: str, api_base_url: str,
+        source: str, username: str, instance: str, days: int, tags: str,
+        delay: int) -> None:
+    try:
+        mastodon_api = Mastodon(
+            client_id=app_cred_file,
+            access_token=login_cred_file,
+            api_base_url=api_base_url)
+    except Exception as e:
+        print('could not login to mastodon: {}'.format(e))
+        return None
+
+    sql, db = _init_db('tootbot.db')
+    db.execute('''CREATE TABLE IF NOT EXISTS tweets (tweet text, toot text,
+               twitter text, mastodon text, instance text)''')
+
+    if source[:4] == 'http':
+        feeds = feedparser.parse(source)
+        twitter = None
+    else:
+        feeds = feedparser.parse(
+            'http://twitrss.me/twitter_user_to_rss/?user={}'.format(source))
+        twitter = source
+
+    for feed in reversed(feeds.entries):
+        # check if this tweet has been processed
+        db.execute(
+            'SELECT * FROM tweets WHERE tweet = ? AND twitter = ?  '
+            'and mastodon = ? and instance = ?', (
+                feed.id, source, username, instance))  # noqa
+        last = db.fetchone()
+        dt = feed.published_parsed
+        age = datetime.now() - datetime(
+            dt.tm_year, dt.tm_mon, dt.tm_mday,
+            dt.tm_hour, dt.tm_min, dt.tm_sec)
+        # process only unprocessed tweets less than 1 day old, after delay
+        if last is None and age < timedelta(days=days) \
+                and age > timedelta(days=delay):
+
+            title = feed.title
+            if twitter and feed.author.lower() != ('(@%s)' % twitter).lower():
+                title = 'RT https://twitter.com/{}\n{}'.format(
+                    feed.author[2:-1], title)
+
+            # get the pictures...
+            toot_media = _get_pictures(feed, mastodon_api)
+
+            title = _replace_short_links(title)
+
+            title = _remove_title_trash(title)
+
+            if twitter is None:
+                title = '{}\nSource: {}\n\n{}'.format(
+                    title, feed.authors[0].name, feed.link)
+
+            # tags is empty or a string list of tags
+            title = '{}{}'.format(title, tags)
+
+            toot = mastodon_api.status_post(title, in_reply_to_id=None,
                                             media_ids=toot_media,
                                             sensitive=False,
                                             visibility='public',
                                             spoiler_text=None)
             if "id" in toot:
-                db.execute("INSERT INTO tweets VALUES ( ? , ? , ? , ? , ? )",
-                           (t.id, toot["id"], source, mastodon, instance))
+                db.execute(
+                    "INSERT INTO tweets VALUES ( ? , ? , ? , ? , ? )",
+                    (feed.id, toot["id"], source, username, instance))
                 sql.commit()
+    _close_db(sql, db)
+
+
+if __name__ == '__main__':
+    args = _parseargs()
+    operation = args.operation
+    username = args.username
+    instance = args.instance
+    source = args.source
+    days = args.days
+    tags = args.tags
+    if tags:
+        tags = '\n{}'.format(' '.join(tags))
+    else:
+        tags = ''
+    delay = args.delay
+    api_base_url = 'https://{}'.format(instance)
+    app_cred_file = '{}.secret'.format(instance)
+    login_cred_file = '{}.secret'.format(username)
+
+    if operation == 'init':
+        _create_credentials(
+            api_base_url, app_cred_file, username, login_cred_file)
+    elif operation == 'toot':
+        main(
+            app_cred_file, login_cred_file, api_base_url, source, username,
+            instance, days, tags, delay)
+    else:
+        print('not a valid operation declared..')
