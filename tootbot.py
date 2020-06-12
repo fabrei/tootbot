@@ -126,8 +126,8 @@ def _remove_title_trash(title: str) -> str:
 
 def main(
         app_cred_file: str, login_cred_file: str, api_base_url: str,
-        source: str, username: str, instance: str, days: int, tags: str,
-        delay: int) -> None:
+        db_filename: str, source: str, username: str, instance: str,
+        days: int, tags: str, delay: int) -> None:
     try:
         mastodon_api = Mastodon(
             client_id=app_cred_file,
@@ -137,7 +137,7 @@ def main(
         print('could not login to mastodon: {}'.format(e))
         return None
 
-    sql, db = _init_db('data/tootbot.db')
+    sql, db = _init_db(db_filename)
     db.execute('''CREATE TABLE IF NOT EXISTS tweets (tweet text, toot text,
                twitter text, mastodon text, instance text)''')
 
@@ -214,13 +214,15 @@ if __name__ == '__main__':
             'data/{}.secret'.format(instance))
     login_cred_file = os.path.join(rootpath,
             'data/{}.secret'.format(username))
+    db_filename = os.path.join(rootpath,
+            'data/tootbot.db')
 
     if operation == 'init':
         _create_credentials(
             api_base_url, app_cred_file, username, login_cred_file)
     elif operation == 'toot':
         main(
-            app_cred_file, login_cred_file, api_base_url, source, username,
-            instance, days, tags, delay)
+            app_cred_file, login_cred_file, api_base_url, db_filename,
+            source, username, instance, days, tags, delay)
     else:
         print('not a valid operation declared..')
