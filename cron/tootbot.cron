@@ -1,1 +1,1 @@
-*/30 * * * * python3 tootbot.py --operation toot --username <username> --instance <instance> --source <source>
+*/30 * * * * python3 /usr/src/app/tootbot.py --operation toot --username <username> --instance <instance> --source <source>
