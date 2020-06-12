@@ -3,5 +3,5 @@
 podman create \
 	-d \
 	-v $HOME/tootbot/data:/usr/src/app/data \
-	--name <container-name>
+	--name <container-name> \
 	<image-name>
