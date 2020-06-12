@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ ! -z $(podman ps --format "{{.Names}}" | grep <container-name>) ] && podman rm <container-name>
+[ ! -z $(podman ps -a --format "{{.Names}}" | grep <container-name>) ] && podman rm <container-name>
 
 podman create \
 	-d \

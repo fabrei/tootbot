@@ -1,4 +1,5 @@
 import argparse
+import os
 import re
 import sqlite3
 import requests
@@ -15,6 +16,10 @@ def _parseargs() -> argparse.Namespace:
                         help='specify operation to do.',
                         type=str,
                         choices=['init', 'toot'],
+                        required=True)
+    parser.add_argument('--rootpath',
+                        help='rootpath to tootbot.py.',
+                        type=str,
                         required=True)
     parser.add_argument('--username',
                         help='username to login to mastodon.',
@@ -193,6 +198,7 @@ def main(
 if __name__ == '__main__':
     args = _parseargs()
     operation = args.operation
+    rootpath = args.rootpath
     username = args.username
     instance = args.instance
     source = args.source
@@ -204,8 +210,10 @@ if __name__ == '__main__':
         tags = ''
     delay = args.delay
     api_base_url = 'https://{}'.format(instance)
-    app_cred_file = 'data/{}.secret'.format(instance)
-    login_cred_file = 'data/{}.secret'.format(username)
+    app_cred_file = os.path.join(rootpath,
+            'data/{}.secret'.format(instance))
+    login_cred_file = os.path.join(rootpath,
+            'data/{}.secret'.format(username))
 
     if operation == 'init':
         _create_credentials(
