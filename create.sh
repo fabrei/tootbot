@@ -1,6 +1,6 @@
 #!/bin/sh
 
-podman run \
+podman create \
 	-d \
 	-v $HOME/tootbot/data:/usr/src/app/data \
 	--name <container-name>

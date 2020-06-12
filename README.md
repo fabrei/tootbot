@@ -31,7 +31,7 @@ pip3 install -r requirements.txt
 ```
 
 ## Setup Podman/Dockker
-Clone the repo and do some changes in `build.sh`, `run.sh` and `systemd.sh`. It was tested with rootless podman 1.9.1.
+Clone the repo and do some changes in `build.sh`, `create.sh` and `systemd.sh`. It was tested with rootless podman 1.9.1.
 
 To run the container as a systemd service with podman, call systemd.sh after previous changes and systemd dir exists. It copies a service file under systemd/ with the option User and Group of the user you logged in as. After it you have to do the following to enable the unit.
 
