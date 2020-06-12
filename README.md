@@ -52,6 +52,7 @@ optional arguments:
   -h, --help            show this help message and exit
   --operation {init,toot}
                         specify operation to do.
+  --rootpath ROOTPATH   rootpath to tootbot.py
   --username USERNAME   username to login to mastodon.
   --instance INSTANCE   a mastodon instance where the username is hosted.
   --source SOURCE       twitter username to toot to mastodon.
@@ -70,9 +71,9 @@ Db file and credential files are stored into data/ . Be sure it exists.
 
 ```
 # init example
-python3 tootbot.py --operation init --username my_username@mastodon --instance mastodon.social
+python3 tootbot.py --operation init --rootpath /opt/tootbot --username my_username@mastodon --instance mastodon.social
 # toot example
-python3 tootbot.py --operation toot --username my_username@mastodon --instance mastodon.social --source any_twitter_account --tags #some #tags #to #append
+python3 tootbot.py --operation toot --rootpath /opt/tootbot --username my_username@mastodon --instance mastodon.social --source any_twitter_account --tags #some #tags #to #append
 # rss/atom feeds example
-python3 tootbot.py --operation toot --username my_username@mastodon --instance mastodon.social --source https://www.data.gouv.fr/fr/datasets/recent.atom --days 2 --tags #dataset #opendata #datagouvfr
+python3 tootbot.py --operation --rootpath /opt/tootbot toot --username my_username@mastodon --instance mastodon.social --source https://www.data.gouv.fr/fr/datasets/recent.atom --days 2 --tags #dataset #opendata #datagouvfr
 ```
