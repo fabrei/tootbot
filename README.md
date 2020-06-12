@@ -7,17 +7,19 @@ It was tested with python 3.6.10
 
 The script only needs a password for the first time to create credential files.
 
-It gets the tweets from RSS available at http://twitrss.me, then does some cleanup on the content:
+It gets the tweets from RSS available at https://nitter.net/<username>/rss, then does some cleanup on the content:
 - twitter tracking links (t.co) are dereferenced
 - twitter hosted pictures are retrieved and uploaded to mastodon
 
-It can also toot RSS/atom feeds (see cron-example.sh).
+The service http://twitrss.me , which was used before, has some problems to create rss feeds from tweets.
+
+It can also toot RSS/atom feeds, just pass RSS/atom url as source.
 
 A sqlite database is used to keep track of tweets than have been tooted.
 
 The script is simply called by a cron job and can run on any server (does not have to be on the mastodon instance server).
 
-## Setup
+## Setup Python
 
 ```
 # clone this repo
@@ -26,6 +28,17 @@ cd tootbot
 
 # install required python modules
 pip3 install -r requirements.txt
+```
+
+## Setup Podman/Dockker
+Clone the repo and do some changes in `build.sh`, `run.sh` and `systemd.sh`. It was tested with rootless podman 1.9.1.
+
+To run the container as a systemd service with podman, call systemd.sh after previous changes and systemd dir exists. It copies a service file under systemd/ with the option User and Group of the user you logged in as. After it you have to do the following to enable the unit.
+
+```
+sudo cp systemd/container-<container-name>.service /etc/systemd/system/
+sudo systemctl enable container-<container-name>.service
+sudo systemctl start container-<container-name>.service
 ```
 
 ## Useage
@@ -50,6 +63,8 @@ optional arguments:
 ```
 
 If you run it with `--operation init` it will ask you for the password of the account. Password is not displayed in the shell. After it, the script uses the created credential files from init operation.
+
+Db file and credential files are stored into data/ . Be sure it exists.
 
 ## Examples
 

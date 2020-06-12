@@ -86,7 +86,7 @@ def _get_pictures(
         mastodon_api: Mastodon) -> list:
     toot_media = []
     for p in re.finditer(
-            r"https://pbs.twimg.com/[^ \xa0\"]*", feed.summary):
+            r"https://nitter.net/pic/[^ \xa0\"]*", feed.summary):
         media = requests.get(p.group(0))
         media_posted = mastodon_api.media_post(
             media.content,
@@ -108,6 +108,8 @@ def _replace_short_links(title: str) -> str:
 
 def _remove_title_trash(title: str) -> str:
     # remove pic.twitter.com links
+    # TODO: maybe this check is not needed, because nitter.net already
+    # removes it.
     m = re.search(r"pic.twitter.com[^ \xa0]*", title)
     if m is not None:
         result = m.group(0)
@@ -130,7 +132,7 @@ def main(
         print('could not login to mastodon: {}'.format(e))
         return None
 
-    sql, db = _init_db('tootbot.db')
+    sql, db = _init_db('data/tootbot.db')
     db.execute('''CREATE TABLE IF NOT EXISTS tweets (tweet text, toot text,
                twitter text, mastodon text, instance text)''')
 
@@ -139,7 +141,7 @@ def main(
         twitter = None
     else:
         feeds = feedparser.parse(
-            'http://twitrss.me/twitter_user_to_rss/?user={}'.format(source))
+                'https://nitter.net/{}/rss'.format(source))
         twitter = source
 
     for feed in reversed(feeds.entries):
@@ -159,8 +161,8 @@ def main(
 
             title = feed.title
             if twitter and feed.author.lower() != ('(@%s)' % twitter).lower():
-                title = 'RT https://twitter.com/{}\n{}'.format(
-                    feed.author[2:-1], title)
+                title = 'RT https://nitter.net/{}\n{}'.format(
+                    feed.author, title)
 
             # get the pictures...
             toot_media = _get_pictures(feed, mastodon_api)
@@ -175,7 +177,6 @@ def main(
 
             # tags is empty or a string list of tags
             title = '{}{}'.format(title, tags)
-
             toot = mastodon_api.status_post(title, in_reply_to_id=None,
                                             media_ids=toot_media,
                                             sensitive=False,
@@ -203,8 +204,8 @@ if __name__ == '__main__':
         tags = ''
     delay = args.delay
     api_base_url = 'https://{}'.format(instance)
-    app_cred_file = '{}.secret'.format(instance)
-    login_cred_file = '{}.secret'.format(username)
+    app_cred_file = 'data/{}.secret'.format(instance)
+    login_cred_file = 'data/{}.secret'.format(username)
 
     if operation == 'init':
         _create_credentials(
